@@ -1,0 +1,82 @@
+version: '2.4'
+
+networks:
+
+  traefik-network:
+    external: true
+
+volumes:
+
+  traefik-volume:
+    external: false
+
+services:
+
+  traefik:
+    build:
+      context: ./docker/traefik
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - traefik-volume:/var/lib/traefik
+    networks:
+      - traefik-network
+    ports:
+      - 80:80
+      - 443:443
+      - 8080:8080
+    environment:
+      DEBUG: 'false'
+      LETS_ENCRYPT_ENABLED: 'true'
+      LETS_ENCRYPT_STAGING: 'false'
+      SWARM_MODE: 'false'
+      TRAEFIK_DASHBOARD_ENABLED: 'false'
+      ACME_EMAIL: ${acme_email}
+      HTTP_AUTH_ENABLED: '${http_auth_enabled}'
+      HTTP_AUTH_USER: ${http_auth_user}
+      HTTP_AUTH_PASSWORD: '${http_auth_password}'
+
+  registry-ui:
+    image: atcol/docker-registry-ui
+    restart: unless-stopped
+    networks:
+      - traefik-network
+    expose:
+      - 8080
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.default.protocol=http'
+      - 'traefik.frontend.rule=Host:${registry_dashboard_uri}'
+      - 'traefik.frontend.passHostHeader=true'
+      - 'traefik.backend=registry-ui'
+      - 'traefik.port=8080'
+      - 'traefik.frontend.entryPoints=http,https'
+    environment:
+      REG1: http://registry:5000/v2/
+
+  registry:
+    image: registry:2
+    restart: unless-stopped
+    networks:
+      - traefik-network
+    expose:
+      - 5000
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.default.protocol=http'
+      - 'traefik.frontend.rule=Host:${registry_uri}'
+      - 'traefik.frontend.passHostHeader=true'
+      - 'traefik.backend=registry'
+      - 'traefik.port=5000'
+      - 'traefik.frontend.entryPoints=http,https'
+    environment:
+      REGISTRY_STORAGE: 's3'
+      REGISTRY_STORAGE_S3_ACCESSKEY: ${spaces_access_id}
+      REGISTRY_STORAGE_S3_SECRETKEY: ${spaces_secret_key}
+      REGISTRY_STORAGE_S3_BUCKET: ${spaces_name}
+      REGISTRY_STORAGE_S3_REGION: us-west-1
+      REGISTRY_STORAGE_S3_REGIONENDPOINT: https://${spaces_region}.digitaloceanspaces.com
+      REGISTRY_STORAGE_S3_ENCRYPT: 'false'
+      REGISTRY_LOG_LEVEL: info
+      REGISTRY_HEALTH_STORAGEDRIVER_ENABLED: 'false'
